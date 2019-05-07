@@ -1,3 +1,5 @@
+hi
+
 # StudentBMS
 ## 准备：
 1. 安装virtualenv:
@@ -28,3 +30,4 @@
 ## 预览
 
 ![](https://github.com/xiongsyao/StudentBMS/blob/master/static/view.jpg)
+
