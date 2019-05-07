@@ -1,261 +1,263 @@
-#coding=utf-8
-import os
+# coding=utf-8
 from flask import Flask, render_template, session, redirect, \
-				  url_for, flash, current_app, request
-from flask_script import Manager, Shell
-from flask_migrate import Migrate, MigrateCommand
+    url_for, flash, current_app, request
+from flask_script import Manager
+from flask_login import UserMixin, LoginManager, login_required
+from wtforms.validators import DataRequired
 from flask_bootstrap import Bootstrap
-from flask_login import UserMixin, LoginManager, login_required, \
-						login_user, logout_user, current_user
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, SelectField, \
-					BooleanField, IntegerField, ValidationError
+    BooleanField, IntegerField, ValidationError
 from wtforms.validators import Required, Length, Regexp
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-
+import time
+# 自定义 方法
+from MyHttpUtil import MyUtil
 
 '''
 Config
 '''
-basedir = os.path.abspath(os.path.dirname(__file__))
-
-def make_shell_context():
-	return dict(app=app, db=db, User=User, Role=Role)
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] =\
-	'sqlite:///' + os.path.join(basedir, 'data.sqlite')
-app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['AdminPassword'] = 666666
-app.config['SECRET_KEY'] = "this is a secret_key"
-db = SQLAlchemy(app)
+app.debug = True
 manager = Manager(app)
+app.config['SECRET_KEY'] = "this is a secret_key"
 bootstrap = Bootstrap(app)
-migrate = Migrate(app, db)
-manager.add_command('db', MigrateCommand)
-manager.add_command('shell', Shell(make_shell_context))
-login_manager = LoginManager(app)
-
+login_manager = LoginManager()
 login_manager.session_protection = 'strong'
 login_manager.login_view = 'login'
 login_manager.login_message = u"你需要登录才能访问这个页面."
+login_manager.init_app(app)
+'''
+使用者bean
+'''
+
+
+class User(UserMixin):
+    pass
+
+    def get_id(self):
+        return 123
+
+    def __init__(self, username):
+        self.username = username
+        self.id = self.get_id()
+
+    @staticmethod
+    def verify_password(password):
+        pwd = time.strftime("%Y%m%d", time.localtime())
+        print("用户输入的pwd:" + password)
+        print("随机的pwd:" + pwd)
+        return pwd == password
+    #
+    # def get_name(self, user_id):
+    #     if len(user_id) > 0:
+    #         return self.name
+    #     else:
+    #         return "Admin"
 
 
 '''
-Models
+定时任务bean
 '''
-class Role(db.Model):
-	__tablename__ = 'roles'
-	id = db.Column(db.Integer, primary_key=True)
-	name = db.Column(db.String(64), unique=True)
-	users = db.relationship('User', backref='role', lazy='dynamic')
-
-	@staticmethod
-	def insert_roles():
-		roles = ('Student','Admin')
-		for r in roles:
-			role = Role.query.filter_by(name=r).first()
-			if role is None:
-				role = Role(name=r)
-			db.session.add(role)
-		db.session.commit()
 
 
-	def __repr__(self):
-		return '<Role %r>' %self.name
+class Corn(object):
 
-class User(UserMixin, db.Model):
-	__tablename__ = 'users'
-	id = db.Column(db.Integer, primary_key=True)
-	number = db.Column(db.SmallInteger, unique=True, index=True)
-	username = db.Column(db.String(64), index=True)
-	password = db.Column(db.String(128), default=123456)
-	role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
-	
-	def __init__(self, **kwargs):
-		super(User, self).__init__(**kwargs)
-		#新添加的用户，初始其角色为学生。
-		if self.role is None:
-			self.role = Role.query.filter_by(name='Student').first()
+    def __init__(self, new_imei, new_corn):
+        # 新添加的用户，初始其角色为任务。
+        self.IMEI = new_imei
+        self.CORN = new_corn
 
-	def __repr__(self):
-		return '<User %r>' %self.username
+    def get_imei(self):
+        return self.IMEI
 
-	#初次运行程序时生成初始管理员的静态方法
-	@staticmethod
-	def generate_admin():
-		admin = Role.query.filter_by(name='Admin').first()
-		u = User.query.filter_by(role=admin).first()
-		if u is None:
-			u = User(number = 000000, username = 'Admin',\
-					 password = current_app.config['AdminPassword'],\
-					 role = Role.query.filter_by(name='Admin').first())
-			db.session.add(u)
-		db.session.commit()
-
-	def verify_password(self, password):
-		return self.password == password
+    def get_corn(self):
+        return self.CORN
 
 
 '''
 Forms
 '''
+
+
 class LoginForm(FlaskForm):
-	number = StringField(u'考号', validators=[Required()])
-	password = PasswordField(u'密码', validators=[Required()])
-	remember_me = BooleanField(u'记住我')
-	submit = SubmitField(u'登录')
+    number = StringField(u'用户名', validators=[DataRequired()])
+    password = PasswordField(u'密码', validators=[DataRequired()])
+    # remember_me = BooleanField(u'记住我')
+    submit = SubmitField(u'登录')
+
+
+class CornListForm(object):
+    def test(self):
+        lists = MyUtil.corn_list()
+        corn_list = []
+        for str_corn in lists:
+            print("Corns:" + str(str_corn['imei']) + str(str_corn['corn']))
+            i = Corn(new_imei=str_corn['imei'], new_corn=str_corn['corn'])
+            corn_list.append(i)
+        print(corn_list)
+        Corns = corn_list
 
 
 class SearchForm(FlaskForm):
-	number = IntegerField(u'考号', validators=[Required(message=u'请输入数字')])
-	submit = SubmitField(u'搜索')
+    number = StringField(u'imei', validators=[DataRequired(message=u'请输入数字')])
+    submit = SubmitField(u'搜索')
 
 
-class UserForm(FlaskForm):
-	username = StringField(u'姓名', validators=[Required()])
-	number = IntegerField(u'考号', validators=[Required(message=u'请输入数字')])
-	submit = SubmitField(u'添加')
-
-	def validate_number(self, field):
-		if User.query.filter_by(number=field.data).first():
-			raise ValidationError(u'此学生已存在，请检查考号！')
+class CornAddForm(FlaskForm):
+    Cornname = StringField(u'IMEI', validators=[DataRequired()])
+    number = StringField(u'CORN', validators=[DataRequired(message=u'请输入corn')])
+    submit = SubmitField(u'添加')
 
 
-class EditForm(FlaskForm):
-	username = StringField(u'姓名', validators=[Required()])
-	number = IntegerField(u'考号', validators=[Required(message=u'请输入数字')])
-	password = StringField(u'密码', validators=[Required(), Length(1,64),\
-									Regexp('^[a-zA-Z0-9_.]*$', 0, \
-											u'密码由字母、数字和_.组成')])
-	role = SelectField(u'身份', coerce=int)
-	submit = SubmitField(u'修改')
-
-	def __init__(self, user, *args, **kargs):
-		super(EditForm, self).__init__(*args, **kargs)
-		self.role.choices = [(role.id, role.name)
-							 for role in Role.query.order_by(Role.name).all()]
-		self.user = user
-
-	def validate_number(self, field):
-		if field.data != self.user.number and \
-				User.query.filter_by(number=field.data).first():
-			raise ValidationError(u'此学生已存在，请检查考号！')
+class CornEditForm(FlaskForm):
+    imei = IntegerField(u'imei', validators=[DataRequired()])
+    corn = StringField(u'corn', validators=[DataRequired(message=u'请输入数字')])
+    submit = SubmitField(u'提交修改')
 
 
 '''
 views
 '''
+
+
 @app.route('/', methods=['GET', 'POST'])
 @login_required
+def first():
+    return render_template('login.html', form=LoginForm())
+
+
+@app.route('/index', methods=['GET', 'POST'])
 def index():
-	form = SearchForm()
-	admin = Role.query.filter_by(name='Admin').first()
-	if form.validate_on_submit():
-		#获得学生列表，其学号包含form中的数字
-		students = User.query.filter(User.number.like \
-								('%{}%'.format(form.number.data))).all()
-	else:
-		students = User.query.order_by(User.role_id.desc(), User.number.asc()).all()
-	return render_template('index.html', form=form, students=students, admin=admin)
+    lists = MyUtil.corn_list()
+    corn_list = []
+    for str_corn in lists:
+        print("Corns:" + str(str_corn['imei']) + str(str_corn['corn']))
+        i = Corn(new_imei=str_corn['imei'], new_corn=str_corn['corn'])
+        corn_list.append(i)
+    print(corn_list)
+    Corns = corn_list
+    form = SearchForm()
+    # print(form)
+    return render_template('index.html', form=form, Corns=Corns)
 
 
-#增加新考生
-@app.route('/add-user', methods=['GET', 'POST'])
-@login_required
-def add_user():
-	form = UserForm()
-	if form.validate_on_submit():
-		user = User(username=form.username.data,
-					number=form.number.data)
-		db.session.add(user)
-		flash(u'成功添加考生')
-		return redirect(url_for('index'))
-	return render_template('add_user.html', form=form)
+# 增加新CORN
+@app.route('/add-Corn', methods=['GET', 'POST'])
+# @login_required
+def add_corn():
+
+    form = CornAddForm()
+    if form.validate_on_submit():
+        MyUtil.corn_add(form.Cornname.data, form.number.data)
+        flash(u'成功添加CORN')
+        return redirect(url_for('index'))
+
+    return render_template('add_user.html', form=form)
 
 
-#删除考生
-@app.route('/remove-user/<int:id>', methods=['GET', 'POST'])
-@login_required
-def remove_user(id):
-	user = User.query.get_or_404(id)
-	if user.role == Role.query.filter_by(name='Admin').first():
-		flash(u'不能删除管理员')
-	else:
-		db.session.delete(user)
-		flash(u'成功删除此考生')
-	return redirect(url_for('index'))
+# 删除CORN
+@app.route('/remove-Corn/<int:id>', methods=['GET', 'POST'])
+# @login_required
+def remove_corn(id):
+    if MyUtil.corn_delete(id):
+        flash(u'删除成功')
+    else:
+        flash(u'删除失败')
+    return redirect(url_for('index'))
 
 
-#修改考生资料
-@app.route('/edit-user/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_user(id):
-	user = User.query.get_or_404(id)
-	form = EditForm(user=user)
-	if form.validate_on_submit():
-		user.username = form.username.data
-		user.number = form.number.data
-		user.password = form.password.data
-		user.role = Role.query.get(form.role.data)
-		db.session.add(user)
-		flash(u'个人信息已更改')
-		return redirect(url_for('index'))
-	form.username.data = user.username
-	form.number.data = user.number
-	form.password.data = user.password
-	form.role.data = user.role_id
-	return render_template('edit_user.html', form=form, user=user)
+# 修改CORN资料
+@app.route('/edit-Corn/<int:id>', methods=['GET', 'POST'])
+# @login_required
+def edit_corn(id):
+    # 先查出来
+    old_corn = MyUtil.corn_find(id)
+    print("old_corn:"+str(old_corn))
+    form = CornEditForm()
+    if form.validate_on_submit():
+        Cornname = form.imei.data
+        number = form.corn.data
+        MyUtil.corn_updete(Cornname, number)
+        flash(u'信息已更改')
+        return redirect(url_for('index'))
+    form.imei.data = old_corn['imei']
+    form.corn.data = old_corn['corn']
+    return render_template('edit_user.html', form=form)
+    # print("出错了！")
+    # form.Cornname.data = Corn.get_imei()
+    # form.number.data = Corn.number
+    # return render_template('edit_user.html', form=form, Corn=Corn)
 
 
-#登录，系统只允许管理员登录
+# 登录，系统只允许管理员登录
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-	form  = LoginForm()
-	if form.validate_on_submit():
-		user = User.query.filter_by(number=form.number.data).first()
-		if user is not None and user.verify_password(form.password.data):
-			if user.role != Role.query.filter_by(name='Admin').first():
-				flash(u'系统只对管理员开放，请联系管理员获得权限！')
-			else:
-				login_user(user, form.remember_me.data)
-				return redirect(url_for('index'))
-		flash(u'用户名或密码错误！')
-	return render_template('login.html', form=form)
+    flash(u'login...')
+    form = LoginForm()
+    if form.validate_on_submit():
+        num = form.number.data
+        pwd = form.password.data
+        print("pwd:" + pwd)
+        flag = User.verify_password(password=pwd)
+        if flag:
+            flash(u'登录成功！')
+            return redirect(url_for('index'))
+        else:
+            flash(u'用户名或密码错误！请联系管理员！')
+    return render_template('login.html', form=form)
 
 
 @app.route('/logout')
 @login_required
 def logout():
-	logout_user()
-	flash(u'成功注销！')
-	return redirect(url_for('login'))
+    # logout_Corn()
+    flash(u'成功注销！')
+    return redirect(url_for('login'))
+
 
 @app.errorhandler(404)
 def page_not_found(e):
-	return render_template('404.html'), 404
+    return render_template('404.html'), 404
+
 
 @app.errorhandler(500)
 def internal_server_error(e):
-	return render_template('500.html'), 500
+    return render_template('500.html'), 500
 
-#加载用户的回调函数
+
+# 加载用户的回调函数
 @login_manager.user_loader
 def load_user(user_id):
-	return User.query.get(int(user_id))
+    # if user_id is None:
+    #     return redirect(url_for('login'))
+    # return User.get_name(user_id)
+    if user_id is not None:
+        curr_user = User("test")
+        curr_user.id = user_id
+    else:
+        curr_user = User("test")
+        curr_user.id = 123
+        return curr_user
+
+
+# @login_manager.user_loader
+# def load_user(user_id):
+#     return User.get_id(user_id)
 
 '''
 增加命令'python app.py init' 
 以增加身份与初始管理员帐号
 '''
-@manager.command
-def init():
-	from app import Role, User
-	Role.insert_roles()
-	User.generate_admin()
+
+#
+# @manager.command
+# def init():
+#     from app import User
+#     Role.insert_roles()
+#     Corn.generate_admin()
 
 
-if __name__=='__main__':
-	manager.run()
+if __name__ == '__main__':
+    app.run(debug=True)
+    manager.run()
